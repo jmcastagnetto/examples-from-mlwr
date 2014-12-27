@@ -1,0 +1,188 @@
+---
+title: "Cancer prediction using caret (from Ch. 3 of 'Machine Learning with R')"
+author: "Jesus M. Castagnetto"
+date: "2014-12-27"
+output: html_document
+---
+
+## Motivation
+
+I am currently reading the book "Machine Learning with R", and also want to
+learn more about the `caret` package, so I decided to replicate the kNN example
+from the chapter 3 of the book using that package instead.
+
+I will load the `caret` package, and also the `doMC` to take advantage of
+parallel processing with multiple cores.
+
+```{r}
+library(caret)
+library(pander)
+library(doMC)
+registerDoMC(cores=4)
+```
+
+## Reading and prepa the data
+
+As the first column in the original CSV file contains only an id, which we will
+not use, we read the csv and remove it before assigning it to a data frame.
+
+Also, we will convert the diagnosis to a factor, in a similar fashion as the
+example in the book.
+
+```{r}
+wbcd <- read.csv("wisc_bc_data.csv", stringsAsFactors = FALSE)[-1]
+# recode diagnosis as a factor
+wbcd$diagnosis <- factor(wbcd$diagnosis, levels = c("B", "M"),
+                         labels = c("Benign", "Malignant"))
+str(wbcd)
+```
+
+Just to have a base measure, let's look at the the frequencies for the
+diagnosis
+
+```{r results='asis'}
+frqtab <- function(x) {
+    round(100*prop.table(table(x)), 1)
+}
+pandoc.table(frqtab(wbcd$diagnosis), style="grid",
+             caption="Original diagnosis frequencies (%)")
+```
+
+## Modelling using the book's data partition
+
+In the book, the first 469 rows are assigned to the training set, and
+the rest to the test set.
+
+```{r}
+wbcd_train <- wbcd[1:469,]
+wbcd_test <- wbcd[470:569,]
+```
+
+Justr for completeness, let's check if that data partition strategy gives
+us sets with similar distributions as the original data.
+
+```{r results='asis'}
+pandoc.table(frqtab(wbcd_train$diagnosis), style="grid",
+             caption="Training set frequencies")
+pandoc.table(frqtab(wbcd_test$diagnosis), style="grid",
+             caption="Test set frequencies")
+```
+
+The frequencies of diagnosis in tranining set looks like the original data,
+but the test set contains an overrepresentation of malignant cases.
+
+In spite of this disparity, let's try to use kNN on the sets. We will
+use repeated cross-validation, and scale the data using the `range`
+method
+
+```{r}
+ctrl <- trainControl(method="repeatedcv", repeats=3)
+knnFit <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+                trControl=ctrl, metric="Accuracy", tuneLength=20,
+                preProc=c("range"))
+knnFit
+plot(knnFit)
+```
+
+As we can see from the results and plot, by using the accuracy metric and 
+the book's data partition, the best model is the one with `k=11`.
+
+Let's use that model to compare it with the test data set.
+
+```{r}
+knnPredict <- predict(knnFit, newdata=wbcd_test)
+cm <- confusionMatrix(knnPredict, wbcd_test$diagnosis)
+cm
+```
+
+
+
+```{r}
+# select training and test sets
+# using a similar proportion 469/569 ~ 0.8243
+set.seed(12345)
+train_index <- createDataPartition(wbcd$diagnosis, p=0.82425, list=FALSE)
+wbcd_train <- wbcd[train_index,]
+wbcd_test <- wbcd[-train_index,]
+
+# let's check if the proportions are similar to the whole sample
+round(prop.table(table(wbcd_train$diagnosis)) * 100, digits = 1)
+round(prop.table(table(wbcd_test$diagnosis)) * 100, digits = 1)
+
+# let's train a model using kNN, and let caret pick the best value
+# for k using accuracy as the selection metric
+# we preprocess the data normalizing it, using the "range" method
+ctrl <- trainControl(method="repeatedcv", repeats=3)
+knnFit <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+                trControl=ctrl, metric="Accuracy", tuneLength=20,
+                preProc=c("range"))
+knnFit
+plot(knnFit)
+
+# we now predict the classes for the test set
+knnPredict <- predict(knnFit, newdata=wbcd_test)
+
+# and estimate the confusion matrix to evaluate the model perfomance
+confusionMatrix(knnPredict, wbcd_test$diagnosis)
+
+# let's try using the ROC as metric
+ctrl <- trainControl(method="repeatedcv", repeats=3, classProbs=TRUE,
+                     summaryFunction=twoClassSummary)
+knnFit <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+                trControl=ctrl, metric="ROC",
+                tuneLength=21, preProc=c("range"))
+knnFit
+plot(knnFit, type="S")
+
+# we now predict the classes for the test set
+knnPredict <- predict(knnFit, newdata=wbcd_test)
+
+# and estimate the confusion matrix to evaluate the model perfomance
+confusionMatrix(knnPredict, wbcd_test$diagnosis)
+
+```
+
+```{r eval=FALSE}
+
+
+# use the scale() function to z-score standardize a data frame
+wbcd_z <- as.data.frame(scale(wbcd[-1]))
+
+# confirm that the transformation was applied correctly
+summary(wbcd_z$area_mean)
+
+# create training and test datasets
+wbcd_train <- wbcd_z[1:469, ]
+wbcd_test <- wbcd_z[470:569, ]
+
+# re-classify test cases
+wbcd_test_pred <- knn(train = wbcd_train, test = wbcd_test,
+                      cl = wbcd_train_labels, k=21)
+
+# Create the cross tabulation of predicted vs. actual
+CrossTable(x = wbcd_test_labels, y = wbcd_test_pred,
+           prop.chisq=FALSE)
+
+# try several different values of k
+wbcd_train <- wbcd_n[1:469, ]
+wbcd_test <- wbcd_n[470:569, ]
+
+wbcd_test_pred <- knn(train = wbcd_train, test = wbcd_test, cl = wbcd_train_labels, k=1)
+CrossTable(x = wbcd_test_labels, y = wbcd_test_pred, prop.chisq=FALSE)
+
+wbcd_test_pred <- knn(train = wbcd_train, test = wbcd_test, cl = wbcd_train_labels, k=5)
+CrossTable(x = wbcd_test_labels, y = wbcd_test_pred, prop.chisq=FALSE)
+
+wbcd_test_pred <- knn(train = wbcd_train, test = wbcd_test, cl = wbcd_train_labels, k=11)
+CrossTable(x = wbcd_test_labels, y = wbcd_test_pred, prop.chisq=FALSE)
+
+wbcd_test_pred <- knn(train = wbcd_train, test = wbcd_test, cl = wbcd_train_labels, k=15)
+CrossTable(x = wbcd_test_labels, y = wbcd_test_pred, prop.chisq=FALSE)
+
+wbcd_test_pred <- knn(train = wbcd_train, test = wbcd_test, cl = wbcd_train_labels, k=21)
+CrossTable(x = wbcd_test_labels, y = wbcd_test_pred, prop.chisq=FALSE)
+
+wbcd_test_pred <- knn(train = wbcd_train, test = wbcd_test, cl = wbcd_train_labels, k=27)
+CrossTable(x = wbcd_test_labels, y = wbcd_test_pred, prop.chisq=FALSE)
+
+```
