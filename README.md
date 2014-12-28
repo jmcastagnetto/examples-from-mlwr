@@ -4,5 +4,5 @@ This repository contains alternative solutions to the examples in the book
 The book's CSV files are *not* included. You can get from the publisher
 directly.
 
-It is an excercise to learn more about ML and `caret`
+It is a personal excercise for me to learn more about ML and `caret`
 
