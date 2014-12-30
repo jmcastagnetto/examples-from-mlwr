@@ -5,6 +5,11 @@ date: "2014-12-27"
 output: html_document
 ---
 
+```{r echo=FALSE}
+library(knitr)
+opts_chunk$set(cache=TRUE)
+```
+
 ## Motivation
 
 I am currently reading the book "Machine Learning with R", and also want to
@@ -19,10 +24,41 @@ library(caret)
 library(pander)
 library(doMC)
 registerDoMC(cores=4)
-set.seed(12345)
+# a utility function for % freq tables
+frqtab <- function(x, caption) {
+    round(100*prop.table(table(x)), 1)
+}
+# utility function to summarize model comparison results
+round_numeric <- function(lst) {
+    lapply(lst, function(x) {
+        if (is.numeric(x)) {
+            x <- round(x, 3)
+        }
+        x
+        })
+}
+
+summod <- function(cm, fit) {
+    summ <- list(k=fit$finalModel$k,
+                 metric=fit$metric,
+                 value=fit$results[fit$results$k == fit$finalModel$k, fit$metric],
+                 TN=cm$table[1,1],
+                 TP=cm$table[2,2],
+                 FN=cm$table[1,2],
+                 FP=cm$table[2,1],
+                 acc=cm$overall["Accuracy"],
+                 acc_ci=paste0("[", round(cm$overall["AccuracyLower"], 3), ", ",
+                               round(cm$overall["AccuracyUpper"], 3), "]"),
+                 sens=cm$byClass["Sensitivity"],
+                 spec=cm$byClass["Specificity"],
+                 PPV=cm$byClass["Pos Pred Value"],
+                 NPV=cm$byClass["Neg Pred Value"])
+    round_numeric(summ)
+}
+
 ```
 
-## Reading and prepa the data
+## Reading and preparing the data
 
 As the first column in the original CSV file contains only an id, which we will
 not use, we read the csv and remove it before assigning it to a data frame.
@@ -42,18 +78,15 @@ Just to have a base measure, let's look at the the frequencies for the
 diagnosis
 
 ```{r results='asis'}
-frqtab <- function(x) {
-    round(100*prop.table(table(x)), 1)
-}
 ft_orig <- frqtab(wbcd$diagnosis)
-pandoc.table(ft_orig, style="grid",
+pandoc.table(ft_orig, style="rmarkdown",
              caption="Original diagnosis frequencies (%)")
 ```
 
-## Modelling using the book's data partition
+## Modelling using the book's data partition and kNN
 
 In the book, the first 469 rows are assigned to the training set, and
-the rest to the test set.
+the rest to the test set:
 
 ```{r}
 wbcd_train <- wbcd[1:469,]
@@ -66,365 +99,261 @@ us sets with similar distributions as the original data.
 ```{r results='asis'}
 ft_train <- frqtab(wbcd_train$diagnosis)
 ft_test <- frqtab(wbcd_test$diagnosis)
-ft_df <- as.data.frame(cbind(ft_orig, ft_train, ft_test))
-colnames(ft_df) <- c("Original", "Training set", "Test set")
-pander(ft_df, style="rmarkdown",
-             caption="Comparison of diagnosis frequencies")
+ftcmp_df <- as.data.frame(cbind(ft_orig, ft_train, ft_test))
+colnames(ftcmp_df) <- c("Original", "Training set", "Test set")
+pander(ftcmp_df, style="rmarkdown",
+             caption="Comparison of diagnosis frequencies (in %)")
 ```
 
-The frequencies of diagnosis in tranining set looks like the original data,
+The frequencies of diagnosis in the tranining set looks like the original data,
 but the test set contains an overrepresentation of malignant cases.
 
-In spite of this disparity, let's try to use kNN on the sets. We will
+In spite of this disparity, let's try to use kNN[^knn3] on the sets. We will
 use repeated cross-validation, and scale the data using the `range`
-method
+method.
+
+[^knn3]: The `caret` package uses the implementation of the algorithm from
+the `knn3` package.
 
 ```{r}
-
-ctrl <- trainControl(method="repeatedcv", repeats=3)
-knnFit <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+ctrl <- trainControl(method="repeatedcv", number=10, repeats=3)
+set.seed(12345)
+knnFit1 <- train(diagnosis ~ ., data=wbcd_train, method="knn",
                 trControl=ctrl, metric="Accuracy", tuneLength=20,
                 preProc=c("range"))
-knnFit
-plot(knnFit)
+knnFit1
+plot(knnFit1)
 ```
 
 As we can see from the results and plot, by using the accuracy metric and 
-the book's data partition, the best model is the one with k=`r knnFit$finalModel$k`.
+the book's data partition, the best model is the one with **k=`r knnFit1$finalModel$k`**.
 
-Let's use that model to compare it with the test data set.
+Let's use this model to predict the diagnosis in the test set, and then calculate
+the corresponding confusion matrix:
 
 ```{r}
-knnPredict <- predict(knnFit, newdata=wbcd_test)
-cmat <- confusionMatrix(knnPredict, wbcd_test$diagnosis)
-cmat
-res <- list(model="model 1",
-            tn=cmat$table[1,1],
-            tp=cmat$table[2,2],
-            fn=cmat$table[1,2],
-            fp=cmat$table[2,1],
-            k=knnFit$finalModel$k,
-            metric=knnFit$metric,
-            metric_value=cmat$overall[1])
+knnPredict1 <- predict(knnFit1, newdata=wbcd_test)
+cmat1 <- confusionMatrix(knnPredict1, wbcd_test$diagnosis, positive="Malignant")
+cmat1
 ```
 
+Let's find out if the model changes if we use the same data partition, but use
+`kappa` as the model selection metric.
 
+```{r}
+knnFit2 <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+                trControl=ctrl, metric="Kappa", tuneLength=20,
+                preProc=c("range"))
+knnFit2
+plot(knnFit2)
+knnPredict2 <- predict(knnFit2, newdata=wbcd_test)
+cmat2 <- confusionMatrix(knnPredict2, wbcd_test$diagnosis, positive="Malignant")
+cmat2
+```
+
+This time, instead of a **k=`r knnFit1$finalModel$k`** of the first model, we
+have a **k=`r knnFit2$finalModel$k`** when using `kappa`.
+
+Finally, let's consider using the `ROC` metric, for that we need to change
+the control parameters:
+
+```{r}
+ctrl <- trainControl(method="repeatedcv", number=10, repeats=3,
+                     classProbs=TRUE, summaryFunction=twoClassSummary)
+knnFit3 <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+                trControl=ctrl, metric="ROC", tuneLength=30,
+                preProc=c("range"))
+knnFit3
+plot(knnFit3)
+knnPredict3 <- predict(knnFit3, newdata=wbcd_test)
+cmat3 <- confusionMatrix(knnPredict3, wbcd_test$diagnosis, positive="Malignant")
+cmat3
+```
+For the `ROC` metric the best model is for **k=`r knnFit3$finalModel$k`**.
+
+Just to have a clear understanding of the differences between the three kNN
+models, we will summarize them in a table.
 
 ```{r results='asis'}
-# select training and test sets
-# using a similar proportion 469/569 ~ 0.82425
-train_index <- createDataPartition(wbcd$diagnosis, p=469/569, list=FALSE)
+# from the book table in page 83
+tn=61
+tp=37
+fn=2
+fp=0
+book_example <- list(
+    k=21,
+    metric=NA,
+    value=NA,
+    TN=tn,
+    TP=tp,
+    FN=fn,
+    FP=fp,
+    acc=(tp + tn)/(tp + tn + fp + fn),
+    acc_ci=NA,
+    sens=tp/(tp + fn),
+    spec=tn/(tn + fp),
+    PPV=tp/(tp + fp),
+    NPV=tn/(tn + fn))
+
+model_comp <- as.data.frame(
+    rbind(round_numeric(book_example),
+          summod(cmat1, knnFit1),
+          summod(cmat2, knnFit2),
+          summod(cmat3, knnFit3)))
+rownames(model_comp) <- c("Book model", "Model 1", "Model 2", "Model 3")
+pander(model_comp[,-3], split.tables=Inf, keep.trailing.zeros=TRUE,
+       caption="Model results when comparing predictions and test set")
+```
+
+The book's model using 21 neighbours is a tad better in accuracy, sensitivity
+and NPV. So it tends to make fewer Type II errors than the other models. On the
+other hand, it uses about twice as many neighbours.
+
+Overall it seems that, with `caret`, in this particular case, it is almost the
+same whether we use `Accuracy` or `ROC` as the selection metric, as both give
+similar results.
+
+## Changing the data partition strategy
+
+
+A question remains as to whether a different partition strategy will improve or
+not the `caret` models. So we will try three different data partition strategies
+using the `Accuracy` metric.
+
+We will choose the following data partitions (in percent of data for training):
+
+- Model A: 469/569 (the proportion used in the book)
+- Model B: 0.5
+- Model C: 0.9
+
+### Using the book's proportions
+
+Let partition the data, and check that each set has similar proportions of 
+diagnosis compared to the original.
+
+```{r results='asis'}
+set.seed(12345)
+ptr <- 469/569
+train_index <- createDataPartition(wbcd$diagnosis, p=ptr, list=FALSE)
 wbcd_train <- wbcd[train_index,]
 wbcd_test <- wbcd[-train_index,]
 ft_train <- frqtab(wbcd_train$diagnosis)
 ft_test <- frqtab(wbcd_test$diagnosis)
 ft_df <- as.data.frame(cbind(ft_orig, ft_train, ft_test))
 colnames(ft_df) <- c("Original", "Training set", "Test set")
-pander(ft_df, style="rmarkdown",
-             caption="Comparison of diagnosis frequencies")
+pander(ft_df, caption=paste0("Comparison of diagnosis frequencies for p=",                       
+                             round(ptr, 3)))
 ```
 
+Now let's do the modelling using `Accuracy` as selection metric:
+
 ```{r}
-# let's train a model using kNN, and let caret pick the best value
-# for k using accuracy as the selection metric
-# we preprocess the data normalizing it, using the "range" method
-ctrl <- trainControl(method="repeatedcv", repeats=3)
-knnFit <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+ctrl <- trainControl(method="repeatedcv", number=10, repeats=3)
+set.seed(12345)
+knnFitA <- train(diagnosis ~ ., data=wbcd_train, method="knn",
                 trControl=ctrl, metric="Accuracy", tuneLength=20,
                 preProc=c("range"))
-knnFit
-plot(knnFit)
-
-# we now predict the classes for the test set
-knnPredict <- predict(knnFit, newdata=wbcd_test)
-
-# and estimate the confusion matrix to evaluate the model perfomance
-cmat <- confusionMatrix(knnPredict, wbcd_test$diagnosis)
-cmat
-res <- rbind(res,
-            list(model="model 2",
-                 tn=cmat$table[1,1],
-                 tp=cmat$table[2,2],
-                 fn=cmat$table[1,2],
-                 fp=cmat$table[2,1],
-                 k=knnFit$finalModel$k,
-                 metric=knnFit$metric,
-                 metric_value=cmat$overall[1]))
+plot(knnFitA)
+knnPredictA <- predict(knnFitA, newdata=wbcd_test)
+cmatA <- confusionMatrix(knnPredictA, wbcd_test$diagnosis, positive="Malignant")
+cmatA
 ```
 
-```{r}
-# let's try using the kappa as metric
-ctrl <- trainControl(method="repeatedcv", repeats=3)
-knnFit <- train(diagnosis ~ ., data=wbcd_train, method="knn",
-                trControl=ctrl, metric="Kappa",
-                tuneLength=21, preProc=c("range"))
-knnFit
-plot(knnFit)
+This time we have a different number or neigbours (**k=`r knnFitA$finalModel$k`**), but
+our accuracy is not as good (`r round(cmatA$overall["Accuracy"], 3)`) and also
+the sensitivity has decreased (`r round(cmatA$byClass["Sensitivity"], 3)`)
+because we have more false negatives.
 
-# we now predict the classes for the test set
-knnPredict <- predict(knnFit, newdata=wbcd_test)
-
-# and estimate the confusion matrix to evaluate the model perfomance
-cmat <- confusionMatrix(knnPredict, wbcd_test$diagnosis)
-cmat
-res <- rbind(res,
-            list(model="model 3",
-                 tn=cmat$table[1,1],
-                 tp=cmat$table[2,2],
-                 fn=cmat$table[1,2],
-                 fp=cmat$table[2,1],
-                 k=knnFit$finalModel$k,
-                 metric=knnFit$metric,
-                 metric_value=cmat$overall[1]))
-
-```
-
-
-
-```{r}
-# let's try using the ROC as metric
-ctrl <- trainControl(method="repeatedcv", repeats=3, classProbs=TRUE,
-                     summaryFunction=twoClassSummary)
-knnFit <- train(diagnosis ~ ., data=wbcd_train, method="knn",
-                trControl=ctrl, metric="ROC",
-                tuneLength=21, preProc=c("range"))
-knnFit
-plot(knnFit, type="S")
-
-# we now predict the classes for the test set
-knnPredict <- predict(knnFit, newdata=wbcd_test)
-
-# and estimate the confusion matrix to evaluate the model perfomance
-cmat <- confusionMatrix(knnPredict, wbcd_test$diagnosis)
-cmat
-res <- rbind(res,
-            list(model="model 4",
-                 tn=cmat$table[1,1],
-                 tp=cmat$table[2,2],
-                 fn=cmat$table[1,2],
-                 fp=cmat$table[2,1],
-                 k=knnFit$finalModel$k,
-                 metric=knnFit$metric,
-                 metric_value=cmat$overall[1]))
-
-res <- data.frame(res, row.names=NULL)
-```
+### Using the 1:1 training:testing proportion
 
 ```{r results='asis'}
-pander(res, caption="Comparison of models")
-```
-
-## p = 0.85
-
-```{r results='asis'}
-# select training and test sets
-# using a similar proportion 469/569 ~ 0.82425
-train_index <- createDataPartition(wbcd$diagnosis, p=0.85, list=FALSE)
+set.seed(12345)
+ptr <- .5
+train_index <- createDataPartition(wbcd$diagnosis, p=ptr, list=FALSE)
 wbcd_train <- wbcd[train_index,]
 wbcd_test <- wbcd[-train_index,]
 ft_train <- frqtab(wbcd_train$diagnosis)
 ft_test <- frqtab(wbcd_test$diagnosis)
 ft_df <- as.data.frame(cbind(ft_orig, ft_train, ft_test))
 colnames(ft_df) <- c("Original", "Training set", "Test set")
-pander(ft_df, style="rmarkdown",
-             caption="Comparison of diagnosis frequencies")
+pander(ft_df, caption=paste0("Comparison of diagnosis frequencies for p=",                       
+                             round(ptr, 3)))
 ```
-
 ```{r}
-# let's train a model using kNN, and let caret pick the best value
-# for k using accuracy as the selection metric
-# we preprocess the data normalizing it, using the "range" method
-ctrl <- trainControl(method="repeatedcv", repeats=3)
-knnFit <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+set.seed(12345)
+knnFitB <- train(diagnosis ~ ., data=wbcd_train, method="knn",
                 trControl=ctrl, metric="Accuracy", tuneLength=20,
                 preProc=c("range"))
-knnFit
-plot(knnFit)
-
-# we now predict the classes for the test set
-knnPredict <- predict(knnFit, newdata=wbcd_test)
-
-# and estimate the confusion matrix to evaluate the model perfomance
-cmat <- confusionMatrix(knnPredict, wbcd_test$diagnosis)
-cmat
-res <- rbind(res,
-            list(model="model 2",
-                 tn=cmat$table[1,1],
-                 tp=cmat$table[2,2],
-                 fn=cmat$table[1,2],
-                 fp=cmat$table[2,1],
-                 k=knnFit$finalModel$k,
-                 metric=knnFit$metric,
-                 metric_value=cmat$overall[1]))
+plot(knnFitB)
+knnPredictB <- predict(knnFitB, newdata=wbcd_test)
+cmatB <- confusionMatrix(knnPredictB, wbcd_test$diagnosis, positive="Malignant")
+cmatB
 ```
 
-```{r}
-# let's try using the kappa as metric
-ctrl <- trainControl(method="repeatedcv", repeats=3)
-knnFit <- train(diagnosis ~ ., data=wbcd_train, method="knn",
-                trControl=ctrl, metric="Kappa",
-                tuneLength=21, preProc=c("range"))
-knnFit
-plot(knnFit)
+This time we have a different number or neigbours (**k=`r knnFitB$finalModel$k`**), but
+our accuracy is not as good (`r round(cmatB$overall["Accuracy"], 3)` and also
+the sensitivity has decreased (`r round(cmatB$byClass["Sensitivity"], 3)`)
+because we have more false negatives.
 
-# we now predict the classes for the test set
-knnPredict <- predict(knnFit, newdata=wbcd_test)
-
-# and estimate the confusion matrix to evaluate the model perfomance
-cmat <- confusionMatrix(knnPredict, wbcd_test$diagnosis)
-cmat
-res <- rbind(res,
-            list(model="model 3",
-                 tn=cmat$table[1,1],
-                 tp=cmat$table[2,2],
-                 fn=cmat$table[1,2],
-                 fp=cmat$table[2,1],
-                 k=knnFit$finalModel$k,
-                 metric=knnFit$metric,
-                 metric_value=cmat$overall[1]))
-
-```
-
-
-
-```{r}
-# let's try using the ROC as metric
-ctrl <- trainControl(method="repeatedcv", repeats=3, classProbs=TRUE,
-                     summaryFunction=twoClassSummary)
-knnFit <- train(diagnosis ~ ., data=wbcd_train, method="knn",
-                trControl=ctrl, metric="ROC",
-                tuneLength=21, preProc=c("range"))
-knnFit
-plot(knnFit, type="S")
-
-# we now predict the classes for the test set
-knnPredict <- predict(knnFit, newdata=wbcd_test)
-
-# and estimate the confusion matrix to evaluate the model perfomance
-cmat <- confusionMatrix(knnPredict, wbcd_test$diagnosis)
-cmat
-res <- rbind(res,
-            list(model="model 4",
-                 tn=cmat$table[1,1],
-                 tp=cmat$table[2,2],
-                 fn=cmat$table[1,2],
-                 fp=cmat$table[2,1],
-                 k=knnFit$finalModel$k,
-                 metric=knnFit$metric,
-                 metric_value=cmat$overall[1]))
-
-res <- data.frame(res, row.names=NULL)
-```
+### Using the 9:1 training:testing proportion
 
 ```{r results='asis'}
-pander(res, caption="Comparison of models")
-```
-
-## p = 0.9
-
-```{r results='asis'}
-# select training and test sets
-# using a similar proportion 469/569 ~ 0.82425
-train_index <- createDataPartition(wbcd$diagnosis, p=0.9, list=FALSE)
+set.seed(12345)
+ptr <- .9
+train_index <- createDataPartition(wbcd$diagnosis, p=ptr, list=FALSE)
 wbcd_train <- wbcd[train_index,]
 wbcd_test <- wbcd[-train_index,]
 ft_train <- frqtab(wbcd_train$diagnosis)
 ft_test <- frqtab(wbcd_test$diagnosis)
 ft_df <- as.data.frame(cbind(ft_orig, ft_train, ft_test))
 colnames(ft_df) <- c("Original", "Training set", "Test set")
-pander(ft_df, style="rmarkdown",
-             caption="Comparison of diagnosis frequencies")
+pander(ft_df, caption=paste0("Comparison of diagnosis frequencies for p=",                       
+                             round(ptr, 3)))
 ```
 
 ```{r}
-# let's train a model using kNN, and let caret pick the best value
-# for k using accuracy as the selection metric
-# we preprocess the data normalizing it, using the "range" method
-ctrl <- trainControl(method="repeatedcv", repeats=3)
-knnFit <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+set.seed(12345)
+knnFitC <- train(diagnosis ~ ., data=wbcd_train, method="knn",
                 trControl=ctrl, metric="Accuracy", tuneLength=20,
                 preProc=c("range"))
-knnFit
-plot(knnFit)
-
-# we now predict the classes for the test set
-knnPredict <- predict(knnFit, newdata=wbcd_test)
-
-# and estimate the confusion matrix to evaluate the model perfomance
-cmat <- confusionMatrix(knnPredict, wbcd_test$diagnosis)
-cmat
-res <- rbind(res,
-            list(model="model 2",
-                 tn=cmat$table[1,1],
-                 tp=cmat$table[2,2],
-                 fn=cmat$table[1,2],
-                 fp=cmat$table[2,1],
-                 k=knnFit$finalModel$k,
-                 metric=knnFit$metric,
-                 metric_value=cmat$overall[1]))
-```
-
-```{r}
-# let's try using the kappa as metric
-ctrl <- trainControl(method="repeatedcv", repeats=3)
-knnFit <- train(diagnosis ~ ., data=wbcd_train, method="knn",
-                trControl=ctrl, metric="Kappa",
-                tuneLength=21, preProc=c("range"))
-knnFit
-plot(knnFit)
-
-# we now predict the classes for the test set
-knnPredict <- predict(knnFit, newdata=wbcd_test)
-
-# and estimate the confusion matrix to evaluate the model perfomance
-cmat <- confusionMatrix(knnPredict, wbcd_test$diagnosis)
-cmat
-res <- rbind(res,
-            list(model="model 3",
-                 tn=cmat$table[1,1],
-                 tp=cmat$table[2,2],
-                 fn=cmat$table[1,2],
-                 fp=cmat$table[2,1],
-                 k=knnFit$finalModel$k,
-                 metric=knnFit$metric,
-                 metric_value=cmat$overall[1]))
-
-```
-
-
-
-```{r}
-# let's try using the ROC as metric
-ctrl <- trainControl(method="repeatedcv", repeats=3, classProbs=TRUE,
-                     summaryFunction=twoClassSummary)
-knnFit <- train(diagnosis ~ ., data=wbcd_train, method="knn",
-                trControl=ctrl, metric="ROC",
-                tuneLength=21, preProc=c("range"))
-knnFit
-plot(knnFit, type="S")
-
-# we now predict the classes for the test set
-knnPredict <- predict(knnFit, newdata=wbcd_test)
-
-# and estimate the confusion matrix to evaluate the model perfomance
-cmat <- confusionMatrix(knnPredict, wbcd_test$diagnosis)
-cmat
-res <- rbind(res,
-            list(model="model 4",
-                 tn=cmat$table[1,1],
-                 tp=cmat$table[2,2],
-                 fn=cmat$table[1,2],
-                 fp=cmat$table[2,1],
-                 k=knnFit$finalModel$k,
-                 metric=knnFit$metric,
-                 metric_value=cmat$overall[1]))
-
-res <- data.frame(res, row.names=NULL)
+plot(knnFitC)
+knnPredictC <- predict(knnFitC, newdata=wbcd_test)
+cmatC <- confusionMatrix(knnPredictC, wbcd_test$diagnosis, positive="Malignant")
+cmatC
 ```
 
 ```{r results='asis'}
-pander(res, caption="Comparison of models")
+model_comp <- data.frame(
+    rbind(
+        summod(cmat1, knnFit1),
+        summod(cmatA, knnFitA),
+        summod(cmatB, knnFitB),
+        summod(cmatC, knnFitC)
+        )
+    )
+rownames(model_comp) <- c("Model 1[^m1]", "Model A[^mA]", "Model B[^mB]", "Model C[^mC]")
+pander(model_comp[,-3], split.tables=Inf, keep.trailing.zeros=TRUE,
+       caption="Model comparison using different data partitioning proportions")
 ```
 
+[^m1]: Data was partitioned using the first 469 rows for training, and the rest
+(100 rows) for testing
 
+[^mA]: Data was partitioned using the same 469:100 proportion, but trying to
+maintain a distribution of diagnosis similar to the full data set in the
+training and testing sets
+
+[^mB]: Data was partitioned in a 1:1 proportion, trying to maintain the same
+distribution in the training and testing set as the original data.
+
+[^mC]: Data was partitioned in a 9:1 proportion, trying to maintain the same
+distribution in the training and testing set as the original data.
+
+## Reproducibility information
+
+Data from the as modified for the book "" 
+
+```{r}
+sessionInfo()
+```
 
