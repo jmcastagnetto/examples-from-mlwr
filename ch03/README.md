@@ -5,3 +5,6 @@ A reproduction of the cancer example from the chapter 3 of the book
 
 Final document published at RPubs: 
 http://rpubs.com/jesuscastagnetto/caret-knn-cancer-prediction
+
+Also published at my site:
+http://www.castagnetto.com/20141230_caret-knn-cancer-prediction.html
