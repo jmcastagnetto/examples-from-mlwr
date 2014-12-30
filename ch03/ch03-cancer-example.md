@@ -161,8 +161,7 @@ diagnosis
 
 ```r
 ft_orig <- frqtab(wdbc$diagnosis)
-pandoc.table(ft_orig, style="rmarkdown",
-             caption="Original diagnosis frequencies (%)")
+pander(ft_orig, style="rmarkdown", caption="Original diagnosis frequencies (%)")
 ```
 
 
@@ -560,21 +559,18 @@ model_comp <- as.data.frame(
           summod(cmat3, knnFit3)))
 rownames(model_comp) <- c("Book model", "Model 1", "Model 2", "Model 3")
 pander(model_comp[,-3], split.tables=Inf, keep.trailing.zeros=TRUE,
+       style="rmarkdown",
        caption="Model results when comparing predictions and test set")
 ```
 
 
----------------------------------------------------------------------------------
-     &nbsp;       k   metric   TN   TP   FN   FP   acc   sens   spec   PPV   NPV 
----------------- --- -------- ---- ---- ---- ---- ----- ------ ------ ----- -----
- **Book model**  21            61   37   2    0   0.98   0.95    1      1   0.97 
 
-  **Model 1**    13  Accuracy  61   36   3    0   0.97   0.92    1      1   0.95 
-
-  **Model 2**     9   Kappa    61   35   4    0   0.96   0.9     1      1   0.94 
-
-  **Model 3**    11    ROC     61   36   3    0   0.97   0.92    1      1   0.95 
----------------------------------------------------------------------------------
+|      &nbsp;      |  k  |  metric  |  TN  |  TP  |  FN  |  FP  |  acc  |  sens  |  spec  |  PPV  |  NPV  |
+|:----------------:|:---:|:--------:|:----:|:----:|:----:|:----:|:-----:|:------:|:------:|:-----:|:-----:|
+|  **Book model**  | 21  |          |  61  |  37  |  2   |  0   | 0.98  |  0.95  |   1    |   1   | 0.97  |
+|   **Model 1**    | 13  | Accuracy |  61  |  36  |  3   |  0   | 0.97  |  0.92  |   1    |   1   | 0.95  |
+|   **Model 2**    |  9  |  Kappa   |  61  |  35  |  4   |  0   | 0.96  |  0.9   |   1    |   1   | 0.94  |
+|   **Model 3**    | 11  |   ROC    |  61  |  36  |  3   |  0   | 0.97  |  0.92  |   1    |   1   | 0.95  |
 
 Table: Model results when comparing predictions and test set
 
@@ -617,18 +613,17 @@ ft_train <- frqtab(wdbc_train$diagnosis)
 ft_test <- frqtab(wdbc_test$diagnosis)
 ft_df <- as.data.frame(cbind(ft_orig, ft_train, ft_test))
 colnames(ft_df) <- c("Original", "Training set", "Test set")
-pander(ft_df, caption=paste0("Comparison of diagnosis frequencies for prop(train)=",                       
-                             round(ptr*100, 2),"%"))
+pander(ft_df, style="rmarkdown",
+       caption=paste0("Comparison of diagnosis frequencies for prop(train)=",
+                      round(ptr*100, 2),"%"))
 ```
 
 
-----------------------------------------------------
-    &nbsp;       Original   Training set   Test set 
---------------- ---------- -------------- ----------
-  **Benign**       62.7         62.8         62.6   
 
- **Malignant**     37.3         37.2         37.4   
-----------------------------------------------------
+|     &nbsp;      |  Original  |  Training set  |  Test set  |
+|:---------------:|:----------:|:--------------:|:----------:|
+|   **Benign**    |    62.7    |      62.8      |    62.6    |
+|  **Malignant**  |    37.3    |      37.2      |    37.4    |
 
 Table: Comparison of diagnosis frequencies for prop(train)=82.43%
 
@@ -751,12 +746,6 @@ set.seed(12345)
 knnFitC <- train(diagnosis ~ ., data=wdbc_train, method="knn",
                 trControl=ctrl, metric="Accuracy", tuneLength=20,
                 preProc=c("range"))
-plot(knnFitC)
-```
-
-![plot of chunk unnamed-chunk-16](./ch03-cancer-example_files/figure-html/unnamed-chunk-16.png) 
-
-```r
 knnPredictC <- predict(knnFitC, newdata=wdbc_test)
 cmatC <- confusionMatrix(knnPredictC, wdbc_test$diagnosis, positive="Malignant")
 cmatC
@@ -831,21 +820,18 @@ model_comp <- data.frame(
     )
 rownames(model_comp) <- c("Model 1", "Model A", "Model B", "Model C")
 pander(model_comp[,-c(2,3)], split.tables=Inf, keep.trailing.zeros=TRUE,
+       style="rmarkdown",
        caption="Model comparison using different data partitioning proportions")
 ```
 
 
----------------------------------------------------------------------
-   &nbsp;      k   TN   TP   FN   FP   acc   sens   spec   PPV   NPV 
-------------- --- ---- ---- ---- ---- ----- ------ ------ ----- -----
- **Model 1**  13   61   36   3    0   0.97   0.92    1      1   0.95 
 
- **Model A**   7   62   33   4    0   0.96   0.89    1      1   0.94 
-
- **Model B**   9  174  102   4    4   0.97   0.96   0.98  0.96  0.98 
-
- **Model C**   5   35   18   3    0   0.95   0.86    1      1   0.92 
----------------------------------------------------------------------
+|    &nbsp;     |  k  |  TN  |  TP  |  FN  |  FP  |  acc  |  sens  |  spec  |  PPV  |  NPV  |
+|:-------------:|:---:|:----:|:----:|:----:|:----:|:-----:|:------:|:------:|:-----:|:-----:|
+|  **Model 1**  | 13  |  61  |  36  |  3   |  0   | 0.97  |  0.92  |   1    |   1   | 0.95  |
+|  **Model A**  |  7  |  62  |  33  |  4   |  0   | 0.96  |  0.89  |   1    |   1   | 0.94  |
+|  **Model B**  |  9  | 174  | 102  |  4   |  4   | 0.97  |  0.96  |  0.98  | 0.96  | 0.98  |
+|  **Model C**  |  5  |  35  |  18  |  3   |  0   | 0.95  |  0.86  |   1    |   1   | 0.92  |
 
 Table: Model comparison using different data partitioning proportions
 

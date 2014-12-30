@@ -132,8 +132,7 @@ diagnosis
 
 ```{r results='asis'}
 ft_orig <- frqtab(wdbc$diagnosis)
-pandoc.table(ft_orig, style="rmarkdown",
-             caption="Original diagnosis frequencies (%)")
+pander(ft_orig, style="rmarkdown", caption="Original diagnosis frequencies (%)")
 ```
 
 ## Modelling using the book's data partition and kNN
@@ -269,6 +268,7 @@ model_comp <- as.data.frame(
           summod(cmat3, knnFit3)))
 rownames(model_comp) <- c("Book model", "Model 1", "Model 2", "Model 3")
 pander(model_comp[,-3], split.tables=Inf, keep.trailing.zeros=TRUE,
+       style="rmarkdown",
        caption="Model results when comparing predictions and test set")
 ```
 
@@ -310,8 +310,9 @@ ft_train <- frqtab(wdbc_train$diagnosis)
 ft_test <- frqtab(wdbc_test$diagnosis)
 ft_df <- as.data.frame(cbind(ft_orig, ft_train, ft_test))
 colnames(ft_df) <- c("Original", "Training set", "Test set")
-pander(ft_df, caption=paste0("Comparison of diagnosis frequencies for prop(train)=",                       
-                             round(ptr*100, 2),"%"))
+pander(ft_df, style="rmarkdown",
+       caption=paste0("Comparison of diagnosis frequencies for prop(train)=",
+                      round(ptr*100, 2),"%"))
 ```
 
 Now let's calculate the model using `Accuracy` as selection metric:
@@ -367,7 +368,6 @@ set.seed(12345)
 knnFitC <- train(diagnosis ~ ., data=wdbc_train, method="knn",
                 trControl=ctrl, metric="Accuracy", tuneLength=20,
                 preProc=c("range"))
-plot(knnFitC)
 knnPredictC <- predict(knnFitC, newdata=wdbc_test)
 cmatC <- confusionMatrix(knnPredictC, wdbc_test$diagnosis, positive="Malignant")
 cmatC
@@ -412,6 +412,7 @@ model_comp <- data.frame(
     )
 rownames(model_comp) <- c("Model 1", "Model A", "Model B", "Model C")
 pander(model_comp[,-c(2,3)], split.tables=Inf, keep.trailing.zeros=TRUE,
+       style="rmarkdown",
        caption="Model comparison using different data partitioning proportions")
 ```
 
