@@ -1,61 +1,113 @@
 ---
 title: "Cancer prediction using caret (from Ch. 3 of 'Machine Learning with R')"
 author: "Jesus M. Castagnetto"
-date: "2014-12-27"
-output: html_document
+date: '2014-12-30'
+output:
+    html_document:
+        theme: readable
+        keep_md: true
+        toc: true
 ---
 
 ```{r echo=FALSE}
 library(knitr)
-opts_chunk$set(cache=TRUE)
+opts_chunk$set(cache=TRUE, comment="")
 ```
 
-## Motivation
+## Background
 
-I am currently reading the book "Machine Learning with R", and also want to
-learn more about the `caret` package, so I decided to replicate the kNN example
-from the chapter 3 of the book using that package instead.
+### Motivation
 
-I will load the `caret` package, and also the `doMC` to take advantage of
-parallel processing with multiple cores.
+I am currently reading the book "Machine Learning with R"[^mlr] by Brent Lantz,
+and also want to learn more about the `caret`[^caret] package, so I decided to replicate
+the kNN example from the chapter 3 of the book using `caret` instead of the 
+`class`[^class] package used in the text.
 
-```{r}
+[^mlr]: [Book page at Packt](https://www.packtpub.com/big-data-and-business-intelligence/machine-learning-r)
+
+[^caret]: [The caret package](http://caret.r-forge.r-project.org/) site
+
+[^class]: [http://cran.r-project.org/web/packages/class/index.html](http://cran.r-project.org/web/packages/class/index.html)
+
+### Preliminary information
+
+The dataset used in the book is a modified version of the "Breast Cancer 
+Wisconsin (Diagnostic) Data Set" from the UCI Machine Learning Repository[^ucibcw],
+as described in Chapter 3 ("*Lazy Learning -- Clasification Using Nearest
+Neighbors") of the aforementioned book. 
+
+[^ucibcw]: [https://archive.ics.uci.edu/ml/datasets/Breast+Cancer+Wisconsin+%28Diagnostic%29](https://archive.ics.uci.edu/ml/datasets/Breast+Cancer+Wisconsin+%28Diagnostic%29)
+
+You can get the modified dataset from the book's page at Packt, but be aware
+that you will need to register to get the files. If you rather don't do that,
+you can get the original data files from the UCI repository, in particular you
+need to get the files:
+
+1. https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wdbc.data
+    - Contains the 569 diagnosis
+2. https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wdbc.names
+    - Contains a complete description of the dataset, including relevant references
+
+If you are going to use the original dataset, be aware that it doesn't have a header row,
+also, you might want to randomize it a bit. Something like the following code might
+work (feel free to improve it):
+
+```{r eval=FALSE}
+uciurl <- "https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wdbc.data"
+download.file(url=uciurl, destfile="wdbc.data", method="curl")
+wdbc <- read.csv("wdbc.data", header=FALSE, stringsAsFactors=FALSE)[-1]
+wdbc <- wdbc[sample(nrow(wdbc)),]
+features <- c("radius", "texture", "perimeter", "area", "smoothness", 
+              "compactness", "concavity", "concave_points", "symmetry",
+              "fractal_dimension")
+calcs <- c("mean", "se", "worst")
+colnames(wdbc) <- c("diagnosis",
+                    paste0(rep(features, 3), "_", rep(calcs, each=10)))
+```
+
+For this excercise we will use the `caret` package to do the kNN modeling and 
+prediction, the `pander` package to be able to output nicely formated tables, 
+and the `doMC` to take advantage of parallel processing with multiple cores.
+Also, we will define some utility functions to simplify matters later in the code.
+
+```{r warning=FALSE, message=FALSE}
 library(caret)
 library(pander)
 library(doMC)
 registerDoMC(cores=4)
+
 # a utility function for % freq tables
 frqtab <- function(x, caption) {
     round(100*prop.table(table(x)), 1)
 }
-# utility function to summarize model comparison results
-round_numeric <- function(lst) {
+
+# utility function to round values in a list
+# but only if they are numeric
+round_numeric <- function(lst, decimals=2) {
     lapply(lst, function(x) {
         if (is.numeric(x)) {
-            x <- round(x, 3)
+            x <- round(x, decimals)
         }
         x
         })
 }
 
+# utility function to summarize model comparison results
 summod <- function(cm, fit) {
     summ <- list(k=fit$finalModel$k,
                  metric=fit$metric,
                  value=fit$results[fit$results$k == fit$finalModel$k, fit$metric],
-                 TN=cm$table[1,1],
-                 TP=cm$table[2,2],
-                 FN=cm$table[1,2],
-                 FP=cm$table[2,1],
-                 acc=cm$overall["Accuracy"],
-                 acc_ci=paste0("[", round(cm$overall["AccuracyLower"], 3), ", ",
-                               round(cm$overall["AccuracyUpper"], 3), "]"),
-                 sens=cm$byClass["Sensitivity"],
-                 spec=cm$byClass["Specificity"],
-                 PPV=cm$byClass["Pos Pred Value"],
-                 NPV=cm$byClass["Neg Pred Value"])
+                 TN=cm$table[1,1],  # true negatives
+                 TP=cm$table[2,2],  # true positives
+                 FN=cm$table[1,2],  # false negatives
+                 FP=cm$table[2,1],  # false positives
+                 acc=cm$overall["Accuracy"],  # accuracy
+                 sens=cm$byClass["Sensitivity"],  # sensitivity
+                 spec=cm$byClass["Specificity"],  # specificity
+                 PPV=cm$byClass["Pos Pred Value"], # positive predictive value
+                 NPV=cm$byClass["Neg Pred Value"]) # negative predictive value
     round_numeric(summ)
 }
-
 ```
 
 ## Reading and preparing the data
@@ -67,58 +119,66 @@ Also, we will convert the diagnosis to a factor, in a similar fashion as the
 example in the book.
 
 ```{r}
-wbcd <- read.csv("wisc_bc_data.csv", stringsAsFactors = FALSE)[-1]
-# recode diagnosis as a factor
-wbcd$diagnosis <- factor(wbcd$diagnosis, levels = c("B", "M"),
+# You may want to omit the next line if using the UCI dataset
+wdbc <- read.csv("wisc_bc_data.csv", stringsAsFactors = FALSE)[-1]
+# recode diagnosis as a factor -- as done in the book example
+wdbc$diagnosis <- factor(wdbc$diagnosis, levels = c("B", "M"),
                          labels = c("Benign", "Malignant"))
-str(wbcd)
+str(wdbc)
 ```
 
 Just to have a base measure, let's look at the the frequencies for the
 diagnosis
 
 ```{r results='asis'}
-ft_orig <- frqtab(wbcd$diagnosis)
+ft_orig <- frqtab(wdbc$diagnosis)
 pandoc.table(ft_orig, style="rmarkdown",
              caption="Original diagnosis frequencies (%)")
 ```
 
 ## Modelling using the book's data partition and kNN
 
+### Using accuracy as metric
+
 In the book, the first 469 rows are assigned to the training set, and
-the rest to the test set:
+the rest to the test set (*Note*: I am using the book's modified dataset,
+if using the the UCI original data, your results might be different)
 
 ```{r}
-wbcd_train <- wbcd[1:469,]
-wbcd_test <- wbcd[470:569,]
+wdbc_train <- wdbc[1:469,]
+wdbc_test <- wdbc[470:569,]
 ```
 
-Justr for completeness, let's check if that data partition strategy gives
+Just for completeness, let's check if that data partition strategy gives
 us sets with similar distributions as the original data.
 
 ```{r results='asis'}
-ft_train <- frqtab(wbcd_train$diagnosis)
-ft_test <- frqtab(wbcd_test$diagnosis)
+ft_train <- frqtab(wdbc_train$diagnosis)
+ft_test <- frqtab(wdbc_test$diagnosis)
 ftcmp_df <- as.data.frame(cbind(ft_orig, ft_train, ft_test))
 colnames(ftcmp_df) <- c("Original", "Training set", "Test set")
 pander(ftcmp_df, style="rmarkdown",
              caption="Comparison of diagnosis frequencies (in %)")
 ```
 
-The frequencies of diagnosis in the tranining set looks like the original data,
-but the test set contains an overrepresentation of malignant cases.
+The frequencies of diagnosis in the tranining set looks a lot like the original data,
+but the test set contains an bit more malignant diagnosis propotionally.
 
 In spite of this disparity, let's try to use kNN[^knn3] on the sets. We will
 use repeated cross-validation, and scale the data using the `range`
-method.
+method. 
 
-[^knn3]: The `caret` package uses the implementation of the algorithm from
-the `knn3` package.
+The example in the book does the modelling at several discrete values of `k`,
+here `caret` provides the means to do that optimization automatically using 
+a selection metric to decide which model is optimal. We will use `Accuracy` as
+the metric.
+
+[^knn3]: Implemented in the function `knn3` in `caret`.
 
 ```{r}
 ctrl <- trainControl(method="repeatedcv", number=10, repeats=3)
 set.seed(12345)
-knnFit1 <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+knnFit1 <- train(diagnosis ~ ., data=wdbc_train, method="knn",
                 trControl=ctrl, metric="Accuracy", tuneLength=20,
                 preProc=c("range"))
 knnFit1
@@ -132,27 +192,31 @@ Let's use this model to predict the diagnosis in the test set, and then calculat
 the corresponding confusion matrix:
 
 ```{r}
-knnPredict1 <- predict(knnFit1, newdata=wbcd_test)
-cmat1 <- confusionMatrix(knnPredict1, wbcd_test$diagnosis, positive="Malignant")
+knnPredict1 <- predict(knnFit1, newdata=wdbc_test)
+cmat1 <- confusionMatrix(knnPredict1, wdbc_test$diagnosis, positive="Malignant")
 cmat1
 ```
 
-Let's find out if the model changes if we use the same data partition, but use
-`kappa` as the model selection metric.
+### Using kappa as metric
+
+Let's find out if the model changes if we use the same data partition, but this
+time we use `kappa` as the model selection metric.
 
 ```{r}
-knnFit2 <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+knnFit2 <- train(diagnosis ~ ., data=wdbc_train, method="knn",
                 trControl=ctrl, metric="Kappa", tuneLength=20,
                 preProc=c("range"))
 knnFit2
 plot(knnFit2)
-knnPredict2 <- predict(knnFit2, newdata=wbcd_test)
-cmat2 <- confusionMatrix(knnPredict2, wbcd_test$diagnosis, positive="Malignant")
+knnPredict2 <- predict(knnFit2, newdata=wdbc_test)
+cmat2 <- confusionMatrix(knnPredict2, wdbc_test$diagnosis, positive="Malignant")
 cmat2
 ```
 
-This time, instead of a **k=`r knnFit1$finalModel$k`** of the first model, we
+Now, instead of a **k=`r knnFit1$finalModel$k`** of the first model, we
 have a **k=`r knnFit2$finalModel$k`** when using `kappa`.
+
+### Using ROC as metric
 
 Finally, let's consider using the `ROC` metric, for that we need to change
 the control parameters:
@@ -160,22 +224,26 @@ the control parameters:
 ```{r}
 ctrl <- trainControl(method="repeatedcv", number=10, repeats=3,
                      classProbs=TRUE, summaryFunction=twoClassSummary)
-knnFit3 <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+knnFit3 <- train(diagnosis ~ ., data=wdbc_train, method="knn",
                 trControl=ctrl, metric="ROC", tuneLength=30,
                 preProc=c("range"))
 knnFit3
 plot(knnFit3)
-knnPredict3 <- predict(knnFit3, newdata=wbcd_test)
-cmat3 <- confusionMatrix(knnPredict3, wbcd_test$diagnosis, positive="Malignant")
+knnPredict3 <- predict(knnFit3, newdata=wdbc_test)
+cmat3 <- confusionMatrix(knnPredict3, wdbc_test$diagnosis, positive="Malignant")
 cmat3
 ```
+
 For the `ROC` metric the best model is for **k=`r knnFit3$finalModel$k`**.
 
+### Comparing the three models
+
 Just to have a clear understanding of the differences between the three kNN
-models, we will summarize them in a table.
+models, we will summarize them in a table. We'll also include the data from
+the book's example.
 
 ```{r results='asis'}
-# from the book table in page 83
+# from the book's table in page 83
 tn=61
 tp=37
 fn=2
@@ -189,7 +257,6 @@ book_example <- list(
     FN=fn,
     FP=fp,
     acc=(tp + tn)/(tp + tn + fp + fn),
-    acc_ci=NA,
     sens=tp/(tp + fn),
     spec=tn/(tn + fp),
     PPV=tp/(tp + fp),
@@ -207,120 +274,132 @@ pander(model_comp[,-3], split.tables=Inf, keep.trailing.zeros=TRUE,
 
 The book's model using 21 neighbours is a tad better in accuracy, sensitivity
 and NPV. So it tends to make fewer Type II errors than the other models. On the
-other hand, it uses about twice as many neighbours.
+other hand, it uses almost twice as many neighbours as any of the models
+estimated using `caret`.
 
-Overall it seems that, with `caret`, in this particular case, it is almost the
+Overall it seems that, with `caret` and in this particular case, it is almost the
 same whether we use `Accuracy` or `ROC` as the selection metric, as both give
 similar results.
 
 ## Changing the data partition strategy
 
-
 A question remains as to whether a different partition strategy will improve or
 not the `caret` models. So we will try three different data partition strategies
 using the `Accuracy` metric.
 
-We will choose the following data partitions (in percent of data for training):
+We will choose the following data partitions (ratio of training:testing cases):
 
-- Model A: 469/569 (the proportion used in the book)
-- Model B: 0.5
-- Model C: 0.9
+- Model A: 469:100 (the proportion used in the book)
+- Model B: 1:1 (50% training, 50% testing)
+- Model C: 9:1 (90% training, 10% testing)
 
 ### Using the book's proportions
 
-Let partition the data, and check that each set has similar proportions of 
-diagnosis compared to the original.
+We will use the proportion of 469:100 to partition the data (~82.425% of rows
+for training) trying to keep the proportions of diagnosis similar in the in all
+sets. To show that this latter condition is kept, we will compare the proportions
+of diagnosis in the original, training and testing data sets.
 
 ```{r results='asis'}
 set.seed(12345)
 ptr <- 469/569
-train_index <- createDataPartition(wbcd$diagnosis, p=ptr, list=FALSE)
-wbcd_train <- wbcd[train_index,]
-wbcd_test <- wbcd[-train_index,]
-ft_train <- frqtab(wbcd_train$diagnosis)
-ft_test <- frqtab(wbcd_test$diagnosis)
+train_index <- createDataPartition(wdbc$diagnosis, p=ptr, list=FALSE)
+wdbc_train <- wdbc[train_index,]
+wdbc_test <- wdbc[-train_index,]
+ft_train <- frqtab(wdbc_train$diagnosis)
+ft_test <- frqtab(wdbc_test$diagnosis)
 ft_df <- as.data.frame(cbind(ft_orig, ft_train, ft_test))
 colnames(ft_df) <- c("Original", "Training set", "Test set")
-pander(ft_df, caption=paste0("Comparison of diagnosis frequencies for p=",                       
-                             round(ptr, 3)))
+pander(ft_df, caption=paste0("Comparison of diagnosis frequencies for prop(train)=",                       
+                             round(ptr*100, 2),"%"))
 ```
 
-Now let's do the modelling using `Accuracy` as selection metric:
+Now let's calculate the model using `Accuracy` as selection metric:
 
 ```{r}
 ctrl <- trainControl(method="repeatedcv", number=10, repeats=3)
 set.seed(12345)
-knnFitA <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+knnFitA <- train(diagnosis ~ ., data=wdbc_train, method="knn",
                 trControl=ctrl, metric="Accuracy", tuneLength=20,
                 preProc=c("range"))
 plot(knnFitA)
-knnPredictA <- predict(knnFitA, newdata=wbcd_test)
-cmatA <- confusionMatrix(knnPredictA, wbcd_test$diagnosis, positive="Malignant")
+knnPredictA <- predict(knnFitA, newdata=wdbc_test)
+cmatA <- confusionMatrix(knnPredictA, wdbc_test$diagnosis, positive="Malignant")
 cmatA
 ```
 
 This time we have a different number or neigbours (**k=`r knnFitA$finalModel$k`**), but
-our accuracy is not as good (`r round(cmatA$overall["Accuracy"], 3)`) and also
-the sensitivity has decreased (`r round(cmatA$byClass["Sensitivity"], 3)`)
+our accuracy is not as good (`r round(cmatA$overall["Accuracy"], 2)`) and also
+the sensitivity has decreased (`r round(cmatA$byClass["Sensitivity"], 2)`)
 because we have more false negatives.
 
 ### Using the 1:1 training:testing proportion
 
-```{r results='asis'}
-set.seed(12345)
-ptr <- .5
-train_index <- createDataPartition(wbcd$diagnosis, p=ptr, list=FALSE)
-wbcd_train <- wbcd[train_index,]
-wbcd_test <- wbcd[-train_index,]
-ft_train <- frqtab(wbcd_train$diagnosis)
-ft_test <- frqtab(wbcd_test$diagnosis)
-ft_df <- as.data.frame(cbind(ft_orig, ft_train, ft_test))
-colnames(ft_df) <- c("Original", "Training set", "Test set")
-pander(ft_df, caption=paste0("Comparison of diagnosis frequencies for p=",                       
-                             round(ptr, 3)))
-```
 ```{r}
 set.seed(12345)
-knnFitB <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+ptr <- .5
+train_index <- createDataPartition(wdbc$diagnosis, p=ptr, list=FALSE)
+wdbc_train <- wdbc[train_index,]
+wdbc_test <- wdbc[-train_index,]
+set.seed(12345)
+knnFitB <- train(diagnosis ~ ., data=wdbc_train, method="knn",
                 trControl=ctrl, metric="Accuracy", tuneLength=20,
                 preProc=c("range"))
-plot(knnFitB)
-knnPredictB <- predict(knnFitB, newdata=wbcd_test)
-cmatB <- confusionMatrix(knnPredictB, wbcd_test$diagnosis, positive="Malignant")
+knnPredictB <- predict(knnFitB, newdata=wdbc_test)
+cmatB <- confusionMatrix(knnPredictB, wdbc_test$diagnosis, positive="Malignant")
 cmatB
 ```
 
-This time we have a different number or neigbours (**k=`r knnFitB$finalModel$k`**), but
-our accuracy is not as good (`r round(cmatB$overall["Accuracy"], 3)` and also
-the sensitivity has decreased (`r round(cmatB$byClass["Sensitivity"], 3)`)
-because we have more false negatives.
+Using 50% of the cases for training, gives us a model using
+**k=`r knnFitB$finalModel$k`** nearest neighbours, with an accuracy of
+`r round(cmatB$overall["Accuracy"], 2)` and a sensitivity of 
+`r round(cmatB$byClass["Sensitivity"], 2)`
 
 ### Using the 9:1 training:testing proportion
 
-```{r results='asis'}
-set.seed(12345)
-ptr <- .9
-train_index <- createDataPartition(wbcd$diagnosis, p=ptr, list=FALSE)
-wbcd_train <- wbcd[train_index,]
-wbcd_test <- wbcd[-train_index,]
-ft_train <- frqtab(wbcd_train$diagnosis)
-ft_test <- frqtab(wbcd_test$diagnosis)
-ft_df <- as.data.frame(cbind(ft_orig, ft_train, ft_test))
-colnames(ft_df) <- c("Original", "Training set", "Test set")
-pander(ft_df, caption=paste0("Comparison of diagnosis frequencies for p=",                       
-                             round(ptr, 3)))
-```
-
 ```{r}
 set.seed(12345)
-knnFitC <- train(diagnosis ~ ., data=wbcd_train, method="knn",
+ptr <- .9
+train_index <- createDataPartition(wdbc$diagnosis, p=ptr, list=FALSE)
+wdbc_train <- wdbc[train_index,]
+wdbc_test <- wdbc[-train_index,]
+set.seed(12345)
+knnFitC <- train(diagnosis ~ ., data=wdbc_train, method="knn",
                 trControl=ctrl, metric="Accuracy", tuneLength=20,
                 preProc=c("range"))
 plot(knnFitC)
-knnPredictC <- predict(knnFitC, newdata=wbcd_test)
-cmatC <- confusionMatrix(knnPredictC, wbcd_test$diagnosis, positive="Malignant")
+knnPredictC <- predict(knnFitC, newdata=wdbc_test)
+cmatC <- confusionMatrix(knnPredictC, wdbc_test$diagnosis, positive="Malignant")
 cmatC
 ```
+
+Using 90% of the cases for training, gives us a model using
+**k=`r knnFitC$finalModel$k`** nearest neighbours, with an accuracy of
+`r round(cmatC$overall["Accuracy"], 2)` and a sensitivity of 
+`r round(cmatC$byClass["Sensitivity"], 2)`
+
+### Comparing the models from different partition strategies
+
+As we have used the same random seed for all models, we can compare them in
+equal footing.
+
+We will compare:
+
+- **Model 1**
+    - Data was partitioned using the first 469 rows for training,
+      and the other 100 rows for testing
+- **Model A**
+    - Data was partitioned using the same 469:100 proportion, but trying to
+      maintain a distribution of diagnosis similar to the full data set in the
+      training and testing sets
+- **Model B**
+    - Data was partitioned 50% for training and 50% for testing, and trying to
+      maintain the same distribution of diagnosis in the training and testing
+      set as the original data.
+- **Model C**
+    - Data was partitioned 90% for training and 10% for testing, while trying to
+      maintain the same distribution of diagnosis in the training and testing
+      set as the original data.
 
 ```{r results='asis'}
 model_comp <- data.frame(
@@ -331,29 +410,34 @@ model_comp <- data.frame(
         summod(cmatC, knnFitC)
         )
     )
-rownames(model_comp) <- c("Model 1[^m1]", "Model A[^mA]", "Model B[^mB]", "Model C[^mC]")
-pander(model_comp[,-3], split.tables=Inf, keep.trailing.zeros=TRUE,
+rownames(model_comp) <- c("Model 1", "Model A", "Model B", "Model C")
+pander(model_comp[,-c(2,3)], split.tables=Inf, keep.trailing.zeros=TRUE,
        caption="Model comparison using different data partitioning proportions")
 ```
 
-[^m1]: Data was partitioned using the first 469 rows for training, and the rest
-(100 rows) for testing
+Comparing **Model 1** and **Model A**, we find that using a balanced proportion
+of diagnosis in the testing and training sets, has the effect of reducing the
+number of nearest neighbours to almost half (from `r knnFit1$finalModel$k` to
+`r knnFitA$finalModel$k`), but also impacts slightly the accuracy, and the
+related measures of sensitivity and NPV.
 
-[^mA]: Data was partitioned using the same 469:100 proportion, but trying to
-maintain a distribution of diagnosis similar to the full data set in the
-training and testing sets
+Using a 1:1 training:testing proportion (**Model B**), affords a slightly better
+accuracy and sensitivity, but at the expense of decreasing the specificity. This
+might be a good trade-off in this case, having fewer false negatives will save 
+more lives, which more than compensates the occurence of a few more false positives.
 
-[^mB]: Data was partitioned in a 1:1 proportion, trying to maintain the same
-distribution in the training and testing set as the original data.
-
-[^mC]: Data was partitioned in a 9:1 proportion, trying to maintain the same
-distribution in the training and testing set as the original data.
+Finally, using 90% for training and 10% for testing not only reduces the
+number of nearest neigbors needed in the model, but also increases the proportion
+of false negatives, decreasing its sensitivity and NPV.
 
 ## Reproducibility information
 
-Data from the as modified for the book "" 
+The dataset used is the modified version of the "Breast Cancer 
+Wisconsin (Diagnostic) Data Set"
+from the UCI Machine Learning Repository, 
+as described in the book "Machine Learning with R" by Brett Lantz 
+(ISBN 978-1-78216-214-8).
 
 ```{r}
 sessionInfo()
 ```
-
