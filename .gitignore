@@ -2,6 +2,8 @@
 .Rhistory
 .RData
 *.csv
+*.names
+*.data
 *_cache
 *_cache/*
 *_files
