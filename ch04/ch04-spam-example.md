@@ -1,4 +1,4 @@
-# SPAM/HAM classification using caret and Naive Bayes
+# SPAM/HAM SMS classification using caret and Naive Bayes
 Jesus M. Castagnetto  
 2015-01-03  
 

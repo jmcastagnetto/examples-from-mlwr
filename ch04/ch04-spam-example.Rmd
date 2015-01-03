@@ -1,5 +1,5 @@
 ---
-title: "SPAM/HAM classification using caret and Naive Bayes"
+title: "SPAM/HAM SMS classification using caret and Naive Bayes"
 author: "Jesus M. Castagnetto"
 date: '2015-01-03'
 output:
