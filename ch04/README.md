@@ -12,6 +12,11 @@ prediction models.
 Another difference is that I used the calculated models on a (different) second
 dataset to test their prediction performance.
 
+Final version published at
+
+- RPubs: http://rpubs.com/jesuscastagnetto/caret-naive-bayes-spam-ham-sms
+- My personal site: http://www.castagnetto.com/20150103_spamham-sms-classification-using-caret-and-naive-bayes.html
+
 References:
 
 - Book page at Packt: https://www.packtpub.com/big-data-and-business-intelligence/machine-learning-r
