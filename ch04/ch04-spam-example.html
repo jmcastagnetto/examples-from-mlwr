@@ -82,12 +82,13 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 <div id="motivation" class="section level3">
 <h3>Motivation</h3>
 <p>I am currently reading the book “Machine Learning with R”<a href="#fn1" class="footnoteRef" id="fnref1"><sup>1</sup></a> by Brent Lantz, and also want to learn more about the <code>caret</code><a href="#fn2" class="footnoteRef" id="fnref2"><sup>2</sup></a> package, so I decided to replicate the SPAM/HAM classification example from the chapter 4 of the book using <code>caret</code> instead of the <code>e1071</code><a href="#fn3" class="footnoteRef" id="fnref3"><sup>3</sup></a> package used in the text.</p>
+<p>There are other differences apart from using a different R package: instead of using as comparison the number of false positives, I decided to use the sensitivity and specificity as criteria to evaluate the prediction models. Also, I used the calculated models on a (different) second dataset to test their validity and prediction performance.</p>
 <p>Also, instead of using as comparison the number of false positives, I decided to use the sensitivity and specificity as criteria to evaluate the prediction models.</p>
 <p>Another difference is that I used the calculated models on a (different) second dataset to test their prediction performance.</p>
 </div>
 <div id="preliminary-information" class="section level3">
 <h3>Preliminary information</h3>
-<p>The dataset used in the book is a modified version of the “SMS Spam Collection v.1” created by Tiago A. Almeida and José Maria Gómez Hidalgo<a href="#fn4" class="footnoteRef" id="fnref4"><sup>4</sup></a>, as described in Chapter 4 (“*Probabilistic Learning – Clasification Using Naive Bayes“) of the aforementioned book.</p>
+<p>The dataset used in the book is a modified version of the “SMS Spam Collection v.1” created by Tiago A. Almeida and José Maria Gómez Hidalgo<a href="#fn4" class="footnoteRef" id="fnref4"><sup>4</sup></a>, as described in Chapter 4 (“<em>Probabilistic Learning – Clasification Using Naive Bayes</em>”) of the aforementioned book.</p>
 <p>You can get the modified dataset from the book’s page at Packt, but be aware that you will need to register to get the files. If you rather don’t do that, you can get the original data files from the original creator’s site.</p>
 <p>To simplify things, we are going to use the original dataset.</p>
 <p>For this excercise we will use the <code>caret</code> package to do the Naive Bayes<a href="#fn5" class="footnoteRef" id="fnref5"><sup>5</sup></a> modeling and prediction, the <code>tm</code> package to generate the text corpus, the <code>pander</code> package to be able to output nicely formated tables, and the <code>doMC</code> to take advantage of parallel processing with multiple cores. Also, we will define some utility functions to simplify matters later in the code.</p>
@@ -100,7 +101,6 @@ library(caret)
 library(tm)
 # to get nice looking tables
 library(pander)
-panderOptions(&quot;table.style&quot;, &quot;rmarkdown&quot;)
 # to simplify selections
 library(dplyr)
 library(doMC)
@@ -175,7 +175,7 @@ ft_train &lt;- frqtab(sms_raw_train$type)
 ft_test &lt;- frqtab(sms_raw_test$type)
 ft_df &lt;- as.data.frame(cbind(ft_orig, ft_train, ft_test))
 colnames(ft_df) &lt;- c(&quot;Original&quot;, &quot;Training set&quot;, &quot;Test set&quot;)
-pander(ft_df,
+pander(ft_df, style=&quot;rmarkdown&quot;,
        caption=paste0(&quot;Comparison of SMS type frequencies among datasets&quot;))</code></pre>
 <table>
 <caption>Comparison of SMS type frequencies among datasets</caption>
@@ -369,7 +369,7 @@ m1 &lt;- sumpred(cm1)
 m2 &lt;- sumpred(cm2)
 model_comp &lt;- as.data.frame(rbind(b1, b2, m1, m2))
 rownames(model_comp) &lt;- c(&quot;Book model 1&quot;, &quot;Book model 2&quot;, &quot;Caret model 1&quot;, &quot;Caret model 2&quot;)
-pander(model_comp, split.tables=Inf, keep.trailing.zeros=TRUE,
+pander(model_comp, style=&quot;rmarkdown&quot;, split.tables=Inf, keep.trailing.zeros=TRUE,
        caption=&quot;Model results when comparing predictions and test set&quot;)</code></pre>
 <table>
 <caption>Model results when comparing predictions and test set</caption>
@@ -452,11 +452,10 @@ brit_sms &lt;- data.frame(rbind(brit_ham, brit_spam))
 brit_sms$type &lt;- factor(brit_sms$type)
 set.seed(12358)
 brit_sms &lt;- brit_sms[sample(nrow(brit_sms)),]
-pander(frqtab(brit_sms$type), caption=&quot;Proportions in the new SMS dataset&quot;)</code></pre>
+pander(frqtab(brit_sms$type), style=&quot;rmarkdown&quot;,
+       caption=&quot;Proportions in the new SMS dataset&quot;)</code></pre>
 <table>
 <caption>Proportions in the new SMS dataset</caption>
-<col width="8%"></col>
-<col width="8%"></col>
 <thead>
 <tr class="header">
 <th align="center">ham</th>
@@ -544,18 +543,10 @@ Prediction ham spam
 bm2 &lt;- sumpred(brit_cm2)
 model_comp &lt;- as.data.frame(rbind(bm1,bm2))
 rownames(model_comp) &lt;- c(&quot;Caret model 1&quot;, &quot;Caret model 2&quot;)
-pander(model_comp, split.tables=Inf, keep.trailing.zeros=TRUE,
+pander(model_comp, style=&quot;rmarkdown&quot;, split.tables=Inf, keep.trailing.zeros=TRUE,
        caption=&quot;Applying the caret models to a new dataset&quot;)</code></pre>
 <table>
 <caption>Applying the caret models to a new dataset</caption>
-<col width="27%"></col>
-<col width="6%"></col>
-<col width="6%"></col>
-<col width="6%"></col>
-<col width="6%"></col>
-<col width="8%"></col>
-<col width="9%"></col>
-<col width="9%"></col>
 <thead>
 <tr class="header">
 <th align="center"> </th>
@@ -681,18 +672,10 @@ Prediction  ham spam
 m4 &lt;- sumpred(cm4)
 model_comp &lt;- as.data.frame(rbind(m3,m4))
 rownames(model_comp) &lt;- c(&quot;Caret model 1&quot;, &quot;Caret model 2&quot;)
-pander(model_comp, split.tables=Inf, keep.trailing.zeros=TRUE,
-       caption=&quot;Applying the caret models to a new dataset&quot;)</code></pre>
+pander(model_comp, style=&quot;rmarkdown&quot;, split.tables=Inf, keep.trailing.zeros=TRUE,
+       caption=&quot;Applying the caret models to a not so different dataset&quot;)</code></pre>
 <table>
-<caption>Applying the caret models to a new dataset</caption>
-<col width="27%"></col>
-<col width="6%"></col>
-<col width="6%"></col>
-<col width="6%"></col>
-<col width="6%"></col>
-<col width="8%"></col>
-<col width="9%"></col>
-<col width="9%"></col>
+<caption>Applying the caret models to a not so different dataset</caption>
 <thead>
 <tr class="header">
 <th align="center"> </th>

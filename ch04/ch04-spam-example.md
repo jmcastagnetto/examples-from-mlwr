@@ -1,4 +1,4 @@
-# SPAM/HAM SMS classification using caret and Naive Bayes
+# SPAM/HAM SMS    classification using caret and Naive Bayes
 Jesus M. Castagnetto  
 2015-01-03  
 
@@ -12,6 +12,12 @@ I am currently reading the book "Machine Learning with R"[^mlr] by Brent Lantz,
 and also want to learn more about the `caret`[^caret] package, so I decided to replicate
 the SPAM/HAM classification example from the chapter 4 of the book using `caret` 
 instead of the `e1071`[^e1071] package used in the text.
+
+There are other differences apart from using a different R package:
+instead of using as comparison the number of false positives, I decided
+to use the sensitivity and specificity as criteria to evaluate the
+prediction models. Also, I used the calculated models on a (different) second
+dataset to test their validity and prediction performance.                                                                                  
 
 Also, instead of using as comparison the number of false positives, I decided
 to use the sensitivity and specificity as criteria to evaluate the 
@@ -29,7 +35,7 @@ dataset to test their prediction performance.
 ### Preliminary information
 
 The dataset used in the book is a modified version of the "SMS Spam Collection v.1" created by Tiago A. Almeida and José Maria Gómez Hidalgo[^smsspamcoll],
-as described in Chapter 4 ("*Probabilistic Learning -- Clasification Using Naive Bayes") of the aforementioned book. 
+as described in Chapter 4 ("*Probabilistic Learning -- Clasification Using Naive Bayes*") of the aforementioned book. 
 
 [^smsspamcoll]: [http://www.dt.fee.unicamp.br/~tiago/smsspamcollection/](http://www.dt.fee.unicamp.br/~tiago/smsspamcollection/)
 
@@ -58,7 +64,6 @@ library(caret)
 library(tm)
 # to get nice looking tables
 library(pander)
-panderOptions("table.style", "rmarkdown")
 # to simplify selections
 library(dplyr)
 library(doMC)
@@ -165,7 +170,7 @@ ft_train <- frqtab(sms_raw_train$type)
 ft_test <- frqtab(sms_raw_test$type)
 ft_df <- as.data.frame(cbind(ft_orig, ft_train, ft_test))
 colnames(ft_df) <- c("Original", "Training set", "Test set")
-pander(ft_df,
+pander(ft_df, style="rmarkdown",
        caption=paste0("Comparison of SMS type frequencies among datasets"))
 ```
 
@@ -410,7 +415,7 @@ m1 <- sumpred(cm1)
 m2 <- sumpred(cm2)
 model_comp <- as.data.frame(rbind(b1, b2, m1, m2))
 rownames(model_comp) <- c("Book model 1", "Book model 2", "Caret model 1", "Caret model 2")
-pander(model_comp, split.tables=Inf, keep.trailing.zeros=TRUE,
+pander(model_comp, style="rmarkdown", split.tables=Inf, keep.trailing.zeros=TRUE,
        caption="Model results when comparing predictions and test set")
 ```
 
@@ -485,15 +490,15 @@ brit_sms <- data.frame(rbind(brit_ham, brit_spam))
 brit_sms$type <- factor(brit_sms$type)
 set.seed(12358)
 brit_sms <- brit_sms[sample(nrow(brit_sms)),]
-pander(frqtab(brit_sms$type), caption="Proportions in the new SMS dataset")
+pander(frqtab(brit_sms$type), style="rmarkdown",
+       caption="Proportions in the new SMS dataset")
 ```
 
 
-------------
- ham   spam 
------ ------
-51.4   48.6 
-------------
+
+|  ham  |  spam  |
+|:-----:|:------:|
+| 51.4  |  48.6  |
 
 Table: Proportions in the new SMS dataset
 
@@ -595,18 +600,16 @@ bm1 <- sumpred(brit_cm1)
 bm2 <- sumpred(brit_cm2)
 model_comp <- as.data.frame(rbind(bm1,bm2))
 rownames(model_comp) <- c("Caret model 1", "Caret model 2")
-pander(model_comp, split.tables=Inf, keep.trailing.zeros=TRUE,
+pander(model_comp, style="rmarkdown", split.tables=Inf, keep.trailing.zeros=TRUE,
        caption="Applying the caret models to a new dataset")
 ```
 
 
------------------------------------------------------------
-      &nbsp;         TN   TP   FN   FP   acc   sens   spec 
-------------------- ---- ---- ---- ---- ----- ------ ------
- **Caret model 1**  449  365   60   1   0.93   0.86    1   
 
- **Caret model 2**  450  353   72   0   0.92   0.83    1   
------------------------------------------------------------
+|       &nbsp;        |  TN  |  TP  |  FN  |  FP  |  acc  |  sens  |  spec  |
+|:-------------------:|:----:|:----:|:----:|:----:|:-----:|:------:|:------:|
+|  **Caret model 1**  | 449  | 365  |  60  |  1   | 0.93  |  0.86  |   1    |
+|  **Caret model 2**  | 450  | 353  |  72  |  0   | 0.92  |  0.83  |   1    |
 
 Table: Applying the caret models to a new dataset
 
@@ -732,20 +735,18 @@ m3 <- sumpred(cm3)
 m4 <- sumpred(cm4)
 model_comp <- as.data.frame(rbind(m3,m4))
 rownames(model_comp) <- c("Caret model 1", "Caret model 2")
-pander(model_comp, split.tables=Inf, keep.trailing.zeros=TRUE,
-       caption="Applying the caret models to a new dataset")
+pander(model_comp, style="rmarkdown", split.tables=Inf, keep.trailing.zeros=TRUE,
+       caption="Applying the caret models to a not so different dataset")
 ```
 
 
------------------------------------------------------------
-      &nbsp;         TN   TP   FN   FP   acc   sens   spec 
-------------------- ---- ---- ---- ---- ----- ------ ------
- **Caret model 1**  1001 299   22   1   0.98   0.93    1   
 
- **Caret model 2**  1002 298   23   0   0.98   0.93    1   
------------------------------------------------------------
+|       &nbsp;        |  TN  |  TP  |  FN  |  FP  |  acc  |  sens  |  spec  |
+|:-------------------:|:----:|:----:|:----:|:----:|:-----:|:------:|:------:|
+|  **Caret model 1**  | 1001 | 299  |  22  |  1   | 0.98  |  0.93  |   1    |
+|  **Caret model 2**  | 1002 | 298  |  23  |  0   | 0.98  |  0.93  |   1    |
 
-Table: Applying the caret models to a new dataset
+Table: Applying the caret models to a not so different dataset
 
 ## Reproducibility information
 
