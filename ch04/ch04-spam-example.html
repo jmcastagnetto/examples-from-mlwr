@@ -83,8 +83,6 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 <h3>Motivation</h3>
 <p>I am currently reading the book “Machine Learning with R”<a href="#fn1" class="footnoteRef" id="fnref1"><sup>1</sup></a> by Brent Lantz, and also want to learn more about the <code>caret</code><a href="#fn2" class="footnoteRef" id="fnref2"><sup>2</sup></a> package, so I decided to replicate the SPAM/HAM classification example from the chapter 4 of the book using <code>caret</code> instead of the <code>e1071</code><a href="#fn3" class="footnoteRef" id="fnref3"><sup>3</sup></a> package used in the text.</p>
 <p>There are other differences apart from using a different R package: instead of using as comparison the number of false positives, I decided to use the sensitivity and specificity as criteria to evaluate the prediction models. Also, I used the calculated models on a (different) second dataset to test their validity and prediction performance.</p>
-<p>Also, instead of using as comparison the number of false positives, I decided to use the sensitivity and specificity as criteria to evaluate the prediction models.</p>
-<p>Another difference is that I used the calculated models on a (different) second dataset to test their prediction performance.</p>
 </div>
 <div id="preliminary-information" class="section level3">
 <h3>Preliminary information</h3>
@@ -220,7 +218,7 @@ sms_test &lt;- sms_test %&gt;% apply(MARGIN=2, FUN=convert_counts)</code></pre>
 <div id="training-the-two-prediction-models" class="section level3">
 <h3>Training the two prediction models</h3>
 <p>We will now use Naive Bayes to train a couple of prediction models. Both models will be generated using 10-fold cross validation, with the default parameters.</p>
-<p>The difference between the models will be that the first one does not use the Laplace correction and let’s the training procedure figure out whether to user or not a kernel density estimate, while the second one fixes Laplace parameter to one (<code>fL=1</code>) and explicitly forbids the use of a kernel density estimate (<code>useKernel=FALSE</code>).</p>
+<p>The difference between the models will be that the first one does not use the Laplace correction and lets the training procedure figure out whether to user or not a kernel density estimate, while the second one fixes Laplace parameter to one (<code>fL=1</code>) and explicitly forbids the use of a kernel density estimate (<code>useKernel=FALSE</code>).</p>
 <pre class="r"><code>ctrl &lt;- trainControl(method=&quot;cv&quot;, 10)
 set.seed(12358)
 sms_model1 &lt;- train(sms_train, sms_raw_train$type, method=&quot;nb&quot;,

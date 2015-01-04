@@ -19,13 +19,6 @@ to use the sensitivity and specificity as criteria to evaluate the
 prediction models. Also, I used the calculated models on a (different) second
 dataset to test their validity and prediction performance.                                                                                  
 
-Also, instead of using as comparison the number of false positives, I decided
-to use the sensitivity and specificity as criteria to evaluate the 
-prediction models.
-
-Another difference is that I used the calculated models on a (different) second
-dataset to test their prediction performance.
-
 [^mlr]: [Book page at Packt](https://www.packtpub.com/big-data-and-business-intelligence/machine-learning-r)
 
 [^caret]: [The caret package](http://caret.r-forge.r-project.org/) site
@@ -217,7 +210,7 @@ Both models will be generated using 10-fold cross validation, with the
 default parameters.
 
 The difference between the models will be that the first one does not
-use the Laplace correction and let's the training procedure figure out whether
+use the Laplace correction and lets the training procedure figure out whether
 to user or not a kernel density estimate, while the second one fixes Laplace
 parameter to one (`fL=1`) and explicitly forbids the use of a kernel density 
 estimate (`useKernel=FALSE`). 
